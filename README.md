@@ -1,127 +1,89 @@
 # Analytics
+Project Overview:
 
--- виводимо основну інформацію про аккаунти і підраховуємо їх
-WITH account_info AS (
-SELECT
-       ses.date AS date,
-       sp.country AS country,
-       acc.id AS account_id,
-       acc.send_interval AS send_interval,
-       is_verified AS is_verified,
-       is_unsubscribed AS is_unsubscribed,
-       COUNT (DISTINCT acc.id) AS acc_cnt,
-       0 AS sent_message,
-       0 AS open_message,
-       0 AS visit_message
+This project focuses on calculating and analyzing key account and email metrics with respect to various grouping fields such as date, country, send_interval, is_verified, and is_unsubscribed. The metrics are calculated separately for accounts and emails to avoid conflicts arising from different logic involving the date field. The project uses SQL with Common Table Expressions (CTEs) and window functions to calculate country-level rankings and aggregate values for key metrics, followed by combining results using a UNION operation.
 
-FROM `data-analytics-mate.DA.account` acc
-LEFT JOIN `data-analytics-mate.DA.account_session` acs
-ON acc.id = acs.account_id
-JOIN `data-analytics-mate.DA.session` ses
-ON ses.ga_session_id = acs.ga_session_id
-JOIN `data-analytics-mate.DA.session_params` sp
-ON acs.ga_session_id = sp.ga_session_id
-GROUP BY acc.id,
-       ses.date,
-       sp.country,
-       acc.send_interval,
-       is_verified,
-       is_unsubscribed
+Key Metrics Calculated:
 
+The project calculates the following metrics both for accounts and emails:
 
-),
-email_info AS
--- виводимо основну інформацію про емейл і підраховуємо листи
+Account Metrics:
 
-(
-SELECT
-      DATE_ADD (ses.date, INTERVAL es.sent_date DAY) AS date,
-     
-      sp.country AS country,
-      es.id_account AS account_id,
-      acc.send_interval AS send_interval,
-      is_verified AS is_verified,
-      is_unsubscribed AS is_unsubscribed,
-      0 AS acc_cnt,
-     
-      COUNT (DISTINCT es.id_message) AS sent_message,
-      COUNT (DISTINCT eo.id_message) AS open_message,
-      COUNT (DISTINCT ev.id_message) AS visit_message,
+account_cnt: Total number of created accounts.
 
+sent_msg: Total number of emails sent.
 
+open_msg: Total number of emails opened.
 
+visit_msg: Total number of email link clicks.
 
- FROM `DA.email_sent` es
- LEFT JOIN `DA.email_open` eo
- ON es.id_message = eo.id_message
- LEFT JOIN `DA.email_visit` ev
- ON es.id_message = ev.id_message
- JOIN `DA.account_session` acs
- ON acs.account_id = es.id_account
- JOIN `DA.session` ses
- ON ses.ga_session_id = acs.ga_session_id
- JOIN `DA.account` acc
- ON acc.id = acs.account_id
- JOIN `DA.session_params` sp
- ON sp.ga_session_id = acs.ga_session_id
+Email Metrics:
 
- GROUP BY account_id, country,
-       date,
-       acc.send_interval,
-       is_verified,
-       is_unsubscribed
- ), union_data AS -- об'єднуємо дві таблиці
-(
-SELECT *
-FROM account_info
+sent_msg: Total number of emails sent.
 
-UNION ALL
+open_msg: Total number of emails opened.
 
-SELECT *
-FROM email_info),
-unionsum_info AS
+visit_msg: Total number of email link clicks.
 
+Additional Country-Level Metrics:
 
--- виводимо метрики, які в подальшому підуть в основну таблицю
-(SELECT date,
-       country,
-       send_interval,
-       is_verified,
-       is_unsubscribed,
-       SUM (acc_cnt) AS account_cnt,
-       SUM (sent_message) AS sent_msg,
-       SUM (open_message) AS open_msg,
-       SUM (visit_message) AS visit_msg
+total_country_account_cnt: Total number of created subscribers per country.
 
-FROM union_data
-GROUP BY 1,2,3,4,5),
-totalcount AS (
+total_country_sent_cnt: Total number of emails sent per country.
 
+Country Ranking Metrics:
 
--- підраховуємо аккаунти і листи в розрізі країн
-SELECT *,
-       SUM (account_cnt) OVER (PARTITION BY country) AS total_country_account_cnt,
-       SUM (sent_msg) OVER (PARTITION BY country) AS total_country_sent_cnt
+rank_total_country_account_cnt: Country rank by total number of created subscribers.
 
-FROM unionsum_info
-ORDER BY total_country_sent_cnt), ranking
-AS (
--- проводимо ранжування
-SELECT *,
-       DENSE_RANK() OVER (ORDER BY total_country_account_cnt DESC) AS rank_total_country_account_cnt,
-       DENSE_RANK() OVER (ORDER BY total_country_sent_cnt DESC) AS rank_total_country_sent_cnt
+rank_total_country_sent_cnt: Country rank by total number of emails sent.
 
-FROM totalcount)
+Grouping Fields:
 
--- виводимо фінальний результат
-SELECT *
-FROM ranking
-WHERE rank_total_country_account_cnt <= 10 OR rank_total_country_sent_cnt <= 10
-ORDER BY date
+The metrics are grouped by the following fields:
 
+date — Date (for accounts: account creation date; for emails: email send date).
 
+country — Country.
 
+send_interval — Interval for sending set by the account.
 
+is_verified — Whether the account is verified.
+
+is_unsubscribed — Whether the subscriber has unsubscribed.
+
+SQL Query Approach:
+
+The SQL query calculates account and email metrics separately and groups the results based on the aforementioned fields. The query utilizes Common Table Expressions (CTEs) to logically separate the calculations for different metrics. Window functions are used to calculate the rankings for countries based on the number of accounts and emails. The results are then combined using a UNION operation, ensuring the separation of account and email metrics, and filtered to include only the top 10 countries based on the rankings.
+
+Final Output Columns:
+
+The query outputs the following columns for each record:
+
+date — Date.
+
+country — Country.
+
+send_interval — Sending interval.
+
+is_verified — Verified account status.
+
+is_unsubscribed — Unsubscribed status.
+
+account_cnt — Number of created accounts.
+
+sent_msg — Number of sent emails.
+
+open_msg — Number of opened emails.
+
+visit_msg — Number of email link clicks.
+
+total_country_account_cnt — Total number of subscribers by country.
+
+total_country_sent_cnt — Total number of sent emails by country.
+
+rank_total_country_account_cnt — Ranking of countries by the number of created accounts.
+
+rank_total_country_sent_cnt — Ranking of countries by the number of sent emails.
 
 
 
